@@ -372,6 +372,15 @@ def confirmed_image_send(before,after):
     return len(outgoing(after))>len(outgoing(before))
 
 
+SEND_FAILED_ROW = re.compile(r'^(?:Unable to send|Failed to send|发送失败|无法发送)', re.I)
+
+
+def send_failed(before, after):
+    """True when WeChat reported a new failed send in the chat after `before` was taken."""
+    count = lambda rows: sum(1 for r in rows if SEND_FAILED_ROW.match(r.get('text', '')))
+    return count(after) > count(before)
+
+
 def send_image(data):
     use_chat(data.get('chat'))
     opid = data.get('id', '')
@@ -401,17 +410,30 @@ def send_image(data):
     DB.execute('INSERT INTO sends VALUES (?,?,?,?)',(opid,digest,'uncertain',time.time()))
     DB.commit()
     click(entry)
-    time.sleep(.3)
-    paste()
-    time.sleep(1.2)
-    enter()
-    for _ in range(40):
-        time.sleep(.25)
-        if confirmed_image_send(before,snapshot()['rows']):
+    for attempt in range(2):
+        time.sleep(.3)
+        paste()
+        time.sleep(1.2)
+        enter()
+        confirmed=False
+        for _ in range(40):
+            time.sleep(.25)
+            if confirmed_image_send(before,snapshot()['rows']):
+                confirmed=True;break
+        if not confirmed:return {'status':'uncertain'}
+        # WeChat shows the picture bubble first and, if the upload fails, adds "Unable to send Image" a moment later.
+        failed=False
+        for _ in range(12):
+            time.sleep(.25)
+            if send_failed(before,snapshot()['rows']):
+                failed=True;break
+        if not failed:
             DB.execute('UPDATE sends SET status=? WHERE id=?',('sent',opid))
             DB.commit()
             path.unlink(missing_ok=True)
             return {'status':'sent'}
+        before=snapshot()['rows']          # the failed bubble stays in the chat; send the picture once more
+        click(entry)
     return {'status':'uncertain'}
 
 
