@@ -328,14 +328,22 @@ def factual_comment(cfg,history):
     body=re.sub(r'^【[^】]*】','',safe[-1]['content'])
     if not FACT_CUE.search(body):return None  # no model call for acknowledgments or everyday chatter
     try:
-        reply=clean_reply(invoke(cfg,policy(cfg,FACT_COMMENT_POLICY),{'history':safe},REPLY_SCHEMA)['reply'])
+        result=invoke(cfg,policy(cfg,FACT_COMMENT_POLICY),{'history':safe},REPLY_SCHEMA)
+        reply=clean_reply(result['reply']);latex=(result.get('latex') or '').strip()
         if not reply or is_refusal(reply) or len(reply)>240 or output_reason(reply,markers) or LATEX_LIKE.search(reply):return None
-        if any(re.search(r'[@＠]\s*'+re.escape(n),reply) for n in cfg.get('mention_names',[])):return None
+        if re.search(r'[:：]\s*$',reply) and not latex:return None  # announces a derivation that never arrived
+        if any(re.search(r'[@＠]\s*'+re.escape(n),reply+latex) for n in cfg.get('mention_names',[])):return None
         key=compact(reply)
         if any(key==compact(m['content']) for m in safe if m['role']=='assistant'):return None
+        if latex and latex_reason(latex):return None
         guard_cfg=dict(cfg,model=cfg.get('gate_model',cfg.get('model')))
-        if not invoke(guard_cfg,policy(cfg,FACT_REVIEW_POLICY),{'history':safe,'candidate':reply},DECISION_SCHEMA)['allowed']:return None
-        return reply
+        candidate=reply+('\n'+latex if latex else '')
+        if not invoke(guard_cfg,policy(cfg,FACT_REVIEW_POLICY),{'history':safe,'candidate':candidate},DECISION_SCHEMA)['allowed']:return None
+        if not latex:return reply
+        try:png=render(latex)
+        except RuntimeError as e:
+            logging.info('Factual comment formula render failed: %s',e);return None
+        return Reply(reply,latex,png)
     except Exception as e:
         logging.info('Factual comment skipped: %s',e);return None
 
@@ -804,12 +812,14 @@ class Worker:
             conversation,chat.banter_followup_key=chat.banter_followup_key,None
             try:text=future.result()
             except Exception:text=None
+            png=None
+            if isinstance(text,Reply):text,png=text.text,text.png   # factual comment with a typeset formula
             if text and now-chat.last_comment>=self.cfg.get('banter_cooldown',45):
                 id=uuid.uuid4().hex
                 self.set_job(id,'generating')
                 try:
-                    self.deliver(chat,id,Reply(text,''),None)
-                    chat.ctx.add('assistant',text);chat.last_comment=time.monotonic()
+                    self.deliver(chat,id,Reply(text,''),png)
+                    chat.ctx.add('assistant',text+('（已发送公式图片）' if png else ''));chat.last_comment=time.monotonic()
                     self.remember_followup(chat,conversation)
                     logging.info('Banter verified: chat=%s job=%s',chat.name,id)
                 except Exception as e:
