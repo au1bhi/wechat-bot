@@ -24,9 +24,11 @@
 
 - 公式图排版：模型一行一条写的步骤或编号列表此前被 LaTeX 当成空格并成一整段（“1. … 2. … 3. …”挤在一起）。`latex_render.preserve_breaks()` 现在在正文、环境和独立公式之外给这类行补 `\\`；空行（分段）、已有的 `\\`、`align`/`enumerate` 等环境内部和 `\[ \]`、`$$ $$` 内部保持原样。
 
+- 漏读新消息：机器人刚发完公式图（最后一行是 Image）后，聊天窗口顶部被图片挤出，旧的“前缀对齐”和“唯一锚点”都对不上，新问题被当成“窗口重置”而静默吞掉。`new_rows()` 现在会在新窗口任意位置寻找最近见过的连续行块（块必须唯一，单行必须有信息量），再取其后的行；含糊的窗口仍不会凭空产生或隐藏消息。
+
 ### 测试
 
-- 新增 `test_bus_filter.py`（总线过滤、缺代理失败关闭、误拦与探测拒答回归）、`test_healthcheck.py`、`test_send_failed.py`、`test_latex_breaks.py`。Python 3.12：332 项运行，无失败（跳过 2）。
+- 新增 `test_bus_filter.py`（总线过滤、缺代理失败关闭、误拦与探测拒答回归）、`test_healthcheck.py`、`test_send_failed.py`、`test_latex_breaks.py`、`test_new_rows_block.py`。Python 3.12：332 项运行，无失败（跳过 2）。
 
 ## 0.1.0-rc.1（2026-10-30）
 

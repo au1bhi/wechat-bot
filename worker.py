@@ -56,6 +56,14 @@ def new_rows(before,after):
     for size in range(min(len(old),len(new)),0,-1):
         if old[-size:] == new[:size]:return after[size:]
     if not old:return []
+    # The window may have lost its top rows (tall pictures push them out): look for the last rows we saw as one
+    # contiguous block anywhere in the new window. Only a block that occurs exactly once counts, and a single
+    # row only if it is informative, so repeated stickers/images cannot create or hide messages.
+    for size in range(min(len(old),len(new)),0,-1):
+        block=old[-size:]
+        if size==1 and (len(block[0][0])<12 or IMAGE_ROW.match(block[0][0]) or SYSTEM_ROW.search(block[0][0])):continue
+        spots=[i for i in range(len(new)-size+1) if new[i:i+size]==block]
+        if len(spots)==1 and (size>=2 or old.count(block[0])==1):return after[spots[0]+size:]
     anchor=old[-1]
     if (len(anchor[0])<12 or IMAGE_ROW.match(anchor[0]) or SYSTEM_ROW.search(anchor[0])
             or old.count(anchor)!=1 or new.count(anchor)!=1):return []
