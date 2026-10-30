@@ -13,7 +13,7 @@
 | Python、Pillow、python-xlib、PyGObject、Bubblewrap、X11/VNC/noVNC、TeX、字体 | 多个宽松、LGPL、GPL及字体许可，不是一张 MIT 覆盖所有组件 | 仅源码引用不自动使本项目变 GPL；若发布预构建二进制/镜像，必须做精确版本 SBOM、许可通知及适用源码/重链接等义务核查，本次未完成完整镜像清单 |
 | WeChat、agy/Antigravity、Google/ChatGPT 账号服务 | 专有软件与服务条款，不由项目开源许可证授权 | 不分发客户端、登录资料或模型 CLI；只指引官方安装。消费者订阅封装限制/非公开 ChatGPT 接口属于独立服务接入风险，不能用项目 MIT 许可消除 |
 
-没有发现本候选直接 vendoring 上述无许可证项目整库的证据；但本地短片段相似度检查只比较 Python 文本，不能证明所有代码均独立创作。`MimicWX` 原本为 Rust，未完整审计每个 Docker/脚本片段。当前应视为“来源待确认”，而非无风险认证。
+没有发现本仓库直接 vendoring 上述无许可证项目整库的证据；但本地短片段相似度检查只比较 Python 文本，不能证明所有代码均独立创作。`MimicWX` 原本为 Rust，未完整审计每个 Docker/脚本片段。当前应视为“来源待确认”，而非无风险认证。
 
 ## 一手证据
 

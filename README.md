@@ -1,8 +1,8 @@
-# Linux WeChat automation — 预发布候选源码
+# Linux WeChat automation
 
 隔离虚拟桌面中的 Linux 微信界面自动化，Python 调度，外部模型生成和内容校验。不是腾讯官方机器人接口。
 
-本目录是脱敏的候选版本：群名、昵称、真人映射和具体地名已替换为演示值；真实密钥、配置、登录资料、聊天记录、截图、原始 benchmark 与预编译二进制未包含。人设仍保留原行为结构，属于可替换的实验示例，不是现实人物资料或通用推荐默认值。
+本仓库为脱敏版本：群名、昵称、真人映射和具体地名已替换为演示值；真实密钥、配置、登录资料、聊天记录、截图、原始 benchmark 与预编译二进制未包含。人设仍保留原行为结构，属于可替换的实验示例，不是现实人物资料或通用推荐默认值。
 
 本项目原创部分采用 **MIT License**，见 [LICENSE](LICENSE)，版权署名为 `wechat-bot contributors`。允许商用、修改和再分发，须保留版权及许可声明，并按许可证不提供担保。第三方材料仍按各自许可和通知处理；主许可证不补足未知来源的授权。发布前阅读 `docs/PREPUBLICATION.md`、`docs/LICENSE_REVIEW.md` 和 `THIRD_PARTY_NOTICES.md`。
 
