@@ -47,7 +47,8 @@
   "agy_model": "gemini-3.8-flash-low",
   "agy_gate_model": "gemini-3.8-flash-low",
   "agy_pool": {
-    "gemini-3.8-flash-low": 4
+    "gemini-3.8-flash-low": 4,
+    "gemini-3.8-flash-high": 2
   },
   "agy_fallback": false,
   "agy_pool_min": 2,
@@ -61,5 +62,10 @@
     "MemberA",
     "memberb."
   ],
-  "catchup_seconds": 1800
+  "catchup_seconds": 1800,
+  "agy_hard_model": "gemini-3.8-flash-high",
+  "agy_hard_timeout": 150,
+  "agy_pool_floors": {
+    "gemini-3.8-flash-high": 0
+  }
 }

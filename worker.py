@@ -331,6 +331,29 @@ def factual_comment(cfg,history):
         logging.info('Factual comment skipped: %s',e);return None
 
 
+HARD_QUESTION=re.compile(
+    r'证明|推导|求(?:解|证|极限|导|积分|值|和|通项|最[大小]值|特征)|计算(?!机)|化简|解(?:方程|不等式)|因式分解|'
+    r'积分|极限|导数|微分|级数|收敛|泰勒|洛必达|傅里叶|拉普拉斯|矩阵|行列式|特征值|特征向量|满秩|(?<![a-z])秩(?![a-z])|'
+    r'线性(?:代数|方程|相关|无关)|二次型|概率(?:密度|分布)|数学期望|方差|分布函数|数列|不定积分|定积分|'
+    r'[∫∑∏√≤≥∞]|\\(?:int|sum|lim|frac|sqrt)|\blim\b|\bsin\b|\bcos\b|\blog\b|\bln\b|'
+    r'时间复杂度|动态规划|最短路|算法题|\bdp\b|报错|bug|为什么.{0,12}(?:不对|错了|不行)',re.I)
+FOLLOWUP_ONLY=re.compile(r'^[\W\d]{0,6}$')
+
+
+def is_hard(text):
+    """Maths, proofs, algorithms and debugging go to the high-effort model; everything else stays on the fast one."""
+    body=re.sub(r'^【[^【】\n]{1,24}】\s*','',text or '')
+    body=re.sub(r'（引用[^）]*）','',body).strip()
+    return len(body)>=4 and bool(HARD_QUESTION.search(body))
+
+
+PROGRESS_START={
+    True:['这题有点难，我认真算一下，稍等。','收到，这个要多想一会儿，先别急。','这题得推导一遍，我在算。'],
+    False:['这题得好好想想，别催，本喵在算喵。','有点难度，容本喵推一遍喵。','等会，这题要多想一下喵。']}
+PROGRESS_ANSWERING={True:['思路有了，正在写答案。','算完了，正在整理答案。'],False:['想出来了，正在写，马上喵。','算完了，在整理喵。']}
+PROGRESS_WAITING={True:'还在推，已经 %d 秒了，快好了。',False:'还在算，已经 %d 秒了喵，别急。'}
+
+
 ANSWER_ATTEMPTS=3
 
 
@@ -427,7 +450,7 @@ def generate(cfg,history):
         return refusal
     # Never forward a previously rejected request or unvalidated reply as context.
     markers=cfg.get('private_markers',[])
-    guard_cfg=dict(cfg,model=cfg.get('gate_model',cfg.get('model')))
+    guard_cfg={k:v for k,v in dict(cfg,model=cfg.get('gate_model',cfg.get('model'))).items() if k not in ('_stage','_hard')}   # only the answer reports progress
     safe_history=[]
     for message in topic_context(history):
         role=message.get('role')
@@ -449,6 +472,8 @@ def generate(cfg,history):
         if '_affection' in cfg and AFFECTION_NOTE:
             answer_policy+=AFFECTION_NOTE.replace('{SPEAKER}','【%s】'%cfg['_speaker'] if cfg.get('_speaker') else '').replace('{AFFECTION}',str(cfg['_affection']))
         acfg=dict(cfg,model=cfg.get('search_model',cfg.get('model'))) if fresh else cfg
+        hard=bool(cfg.get('agy_hard_model')) and not fresh and is_hard(latest)
+        if hard:acfg=dict(acfg,_hard=True)
         extra={'search':True} if fresh else {}
         answer=POOL.submit(invoke,acfg,answer_policy,{'history':safe_history},REPLY_SCHEMA,**extra)
         allowed=gate.result()['allowed']
@@ -514,6 +539,7 @@ class Chat:
         self.answer_job=None
         self.answer_followup_key=None
         self.followups={}
+        self.progress=None       # status notes for a slow answer in flight
         self.followup_path=state_dir/('followup-%s.json'%digest)
         try:
             wall=time.time();mono=time.monotonic();limit=cfg.get('followup_seconds',120)
@@ -1007,6 +1033,7 @@ class Worker:
                 self.set_job(id,'failed',str(e));self.status('error',error=str(e))
                 logging.warning('Reply stopped: %s',e)
         self.finish_answer(chat)
+        self.progress_tick(chat)
         if chat.answer_job is None and chat.buffered and (
                 time.monotonic()-chat.last_change>=self.cfg['debounce_seconds'] or
                 time.monotonic()-chat.buffered[0].get('observed_at',chat.last_change)>=2):
@@ -1035,7 +1062,13 @@ class Worker:
                 if self.cfg.get('affection',False):turn_cfg.update(_affection=self.affection.get(speaker),_speaker=batch[0].get('sender'))
                 chat.answer_speaker=speaker;chat.answer_batch=batch
                 chat.answer_followup_key=batch[0].get('followup_key')
+                hard=bool(self.cfg.get('agy_hard_model')) and not needs_fresh(question) and is_hard(question)
+                chat.progress=None
+                if hard:
+                    chat.progress={'t0':started,'stage':'thinking','calm':bool(turn_cfg.get('_calm')),'waits':0,'next_wait':30,'answering_told':False}
+                    turn_cfg['_stage']=lambda stage,pr=chat.progress:pr.__setitem__('stage',stage)
                 chat.answer_job=(ANSWERS.submit(generate,turn_cfg,prompt_context),id,started)
+                if hard:self.send_progress(chat,random.choice(PROGRESS_START[chat.progress['calm']]))
             except Exception as e:
                 self.set_job(id,'failed',str(e));self.status('error',error=str(e))
                 logging.warning('Reply preparation stopped: chat=%s error=%s',chat.name,e)
@@ -1043,6 +1076,36 @@ class Worker:
         elif not chat.buffered and chat.answer_job is None:
             self.compact(chat)
             self.banter_tick(chat)
+
+    def send_progress(self,chat,text):
+        """A short status line for a slow answer. It is not part of the conversation context."""
+        id=uuid.uuid4().hex
+        self.set_job(id,'generating')
+        try:
+            self.deliver(chat,id,Reply(text,''),None)
+            logging.info('Progress note sent: chat=%s',chat.name)
+        except Exception as e:
+            self.set_job(id,'failed',str(e))
+            logging.warning('Progress note failed: %s',e)
+
+    def progress_tick(self,chat):
+        """Tell the group how a slow answer is going, using only what is really known: elapsed time and whether the
+        model has started writing (agy reports no reasoning text, so nothing about individual steps is invented)."""
+        pr=getattr(chat,'progress',None)
+        if not pr:return
+        if chat.answer_job is None:
+            chat.progress=None;return
+        now=time.monotonic()
+        elapsed=now-pr['t0']
+        if pr['stage']=='answering':
+            # Typesetting usually finishes within seconds, so only say something if the writing phase drags on.
+            pr.setdefault('answering_at',now)
+            if not pr['answering_told'] and now-pr['answering_at']>=8:
+                pr['answering_told']=True
+                self.send_progress(chat,random.choice(PROGRESS_ANSWERING[pr['calm']]))
+        elif pr['waits']<2 and elapsed>=pr['next_wait']:
+            pr['waits']+=1;pr['next_wait']+=30
+            self.send_progress(chat,PROGRESS_WAITING[pr['calm']]%int(elapsed))
 
     def calm_for(self,chat,sender):
         """In the calm groups only the listed speakers (MemberA, memberb.) keep the sharp-tongued persona."""

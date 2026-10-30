@@ -36,6 +36,7 @@ READY_TIMEOUT=60
 TURN_TIMEOUT=60
 SEARCH_TURN_TIMEOUT=90
 IMAGE_TURN_TIMEOUT=90
+HARD_TURN_TIMEOUT=150
 MAX_IDLE_AGE=900
 REAP_AFTER=240
 MAX_IMAGE_BYTES=4_000_000
@@ -210,7 +211,7 @@ class Warm:
             names.append(name)
         return names
 
-    def turn(self,text,timeout=TURN_TIMEOUT):
+    def turn(self,text,timeout=TURN_TIMEOUT,on_stage=None):
         message={'event':'user','message':{'role':'user','content':[{'type':'text','text':text}]}}
         self.proc.stdin.write(json.dumps(message,ensure_ascii=False)+'\n')
         self.proc.stdin.flush()
@@ -221,6 +222,11 @@ class Warm:
             try:event=self.events.get(timeout=remaining)
             except queue.Empty:raise RuntimeError('AGY_TIMEOUT') from None
             if event is None:raise RuntimeError('AGY_EXITED')
+            if on_stage and event.get('event')=='step_update':
+                update=event.get('step_update',{})
+                if update.get('step_type')=='agent_response' and update.get('text_delta'):
+                    on_stage('answering')          # the model has finished thinking and started writing
+                    on_stage=None
             if event.get('event')=='result':
                 result=event.get('result',{})
                 self.reported=result.get('duration_seconds')
@@ -268,7 +274,7 @@ class Pool:
         self.ceiling=dict(cfg.get('agy_pool') or {})                  # burst size per model
         self.floor=cfg.get('agy_pool_min',2)                          # size while nothing is happening
         self.idle_seconds=cfg.get('agy_pool_idle_seconds',300)
-        self.target={m:min(self.floor,n) for m,n in self.ceiling.items()}
+        self.target={m:min(self.floor_for(m),n) for m,n in self.ceiling.items()}
         self.last_use=0.0
         self.peak_live=0
         self.live=set()                                               # every process this pool started
@@ -294,6 +300,10 @@ class Pool:
         # A session marked dead may still be draining/terminating: count its real process.
         return sum(w.model==model and w.proc is not None and w.proc.poll() is None for w in self.live)
 
+    def floor_for(self,model):
+        """Idle size for one model; `agy_pool_floors` can set 0 so a slow, rarely used model starts only on demand."""
+        return int((self.cfg.get('agy_pool_floors') or {}).get(model,self.floor))
+
     def _limit(self,model):
         return max(1,int(self.ceiling.get(model,max(1,self.floor))))
 
@@ -307,7 +317,7 @@ class Pool:
                 ready=[w for w in items if w.ready.is_set() and not w.dead]
                 # A cold/contended acquisition proves the floor is insufficient
                 # for this burst. Keep replacements warm up to the existing cap.
-                if not ready:self.target[model]=self._limit(model)
+                if not ready and self.floor_for(model)>0:self.target[model]=self._limit(model)
                 warm=(ready or items or [None])[0]
                 if warm is not None:
                     items.remove(warm);break
@@ -363,7 +373,7 @@ class Pool:
         """Back to the idle size once nobody has used the pool for a while, to give the memory back."""
         quiet_seconds=min(self.idle_seconds,self.cfg.get('agy_pool_burst_idle_seconds',60))
         if self.last_use and time.monotonic()-self.last_use<quiet_seconds:return
-        self.target={m:min(self.floor,n) for m,n in self.ceiling.items()}
+        self.target={m:min(self.floor_for(m),n) for m,n in self.ceiling.items()}
         for model,items in self.idle.items():
             while len(items)>self.target.get(model,0):
                 items.pop().discard()                                 # drop the newest, keep the warmest
@@ -476,6 +486,7 @@ def parse_json(text):
 def model_for(cfg):
     """Gate/audit/summary calls run on the guard model; answers on the main one."""
     gate=cfg.get('model')==cfg.get('gate_model')
+    if cfg.get('_hard') and not gate and cfg.get('agy_hard_model'):return cfg['agy_hard_model']   # maths and other hard questions
     return cfg['agy_gate_model'] if gate else cfg['agy_model']
 
 
@@ -487,7 +498,8 @@ def one_attempt(cfg,policy,payload,schema,search,images):
     try:
         names=warm.put_images(images) if images else ()
         timeout=IMAGE_TURN_TIMEOUT if images else SEARCH_TURN_TIMEOUT if search else TURN_TIMEOUT
-        raw=warm.turn(build_prompt(policy,payload,schema,search,names),timeout)
+        if cfg.get('_hard') and model==cfg.get('agy_hard_model'):timeout=max(timeout,cfg.get('agy_hard_timeout',HARD_TURN_TIMEOUT))
+        raw=warm.turn(build_prompt(policy,payload,schema,search,names),timeout,cfg.get('_stage'))
     finally:
         warm.discard()
     t2=time.monotonic()
