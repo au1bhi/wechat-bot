@@ -145,16 +145,9 @@ def open_chat():
     candidates = [n for n in ns if n.get_role_name() == 'list item'
                   and n.get_name().split('\n')[0] == CHAT]
     if not candidates:
-        searches = [n for n in ns if n.get_role_name() == 'text' and n.get_name() in ('Search', '搜索')]
-        if len(searches) != 1:
-            raise RuntimeError('CHAT_NOT_FOUND: '+CHAT)
-        search = searches[0]
-        click(search)
-        Atspi.EditableText.set_text_contents(search, CHAT)
-        time.sleep(1)
-        ns = list(walk(a))
-        candidates = [n for n in ns if n.get_role_name() == 'list item'
-                      and n.get_name().split('\n')[0] == CHAT]
+        # Never fall back to the search box: its results include web-search entries that open a browser window
+        # over WeChat. A chat that is not in the visible chat list is reported, not hunted for.
+        raise RuntimeError('CHAT_NOT_FOUND: '+CHAT)
     if len(candidates) != 1:
         raise RuntimeError('CHAT_NOT_UNIQUE: '+CHAT)
     click(candidates[0])
