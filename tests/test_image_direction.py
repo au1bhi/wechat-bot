@@ -32,7 +32,7 @@ class Node:
 def bridge(crop,clipped=False):
     row=Node('Image',(20,20,578,128));listing=Node('Messages',(20,40 if clipped else 20,578,128),[row])
     shot=Image.new('RGB',(640,200),(250,250,250));shot.paste(crop,(20,20))
-    scope={'open_chat':lambda:None,'app':lambda:listing,'walk':lambda a:[a],
+    scope={'open_chat':lambda:None,'follow_latest':lambda:[listing],'app':lambda:listing,'walk':lambda a:[a],
            'visible':lambda n:True,'bounds':lambda n:n.rect,'screenshot':lambda:shot,
            'IMAGE_ROW':worker.IMAGE_ROW,'re':re,'CHAT':'A',
            'name_strip':lambda c,w:('NAME',None),'strip_png':lambda x:'STRIP','crop_png':lambda c:'PNG'}
