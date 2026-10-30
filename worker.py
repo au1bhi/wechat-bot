@@ -29,7 +29,7 @@ Reply=namedtuple('Reply','text latex png mood',defaults=(None,None))
 from topic_policy import CONTEXT_MARKER
 from guardrails import (REFUSAL, input_reason, output_reason, latex_reason, LATEX_LIKE,
                         INPUT_POLICY, ANSWER_POLICY, CALM_POLICY, FACT_COMMENT_POLICY, FACT_REVIEW_POLICY, AUDIT_POLICY, SUMMARY_POLICY, BANTER_POLICY, VISION_POLICY, VISION_FULL_POLICY, NAME_POLICY, FIXED_REPLY,
-                        fixed_trigger, needs_fresh, clean_reply, SEARCH_NOTE, VERIFIED_OWNER_POLICY, AFFECTION_NOTE)
+                        fixed_trigger, needs_fresh, clean_reply, SEARCH_NOTE, DENIES_EXISTENCE, VERIFIED_OWNER_POLICY, AFFECTION_NOTE)
 from latex_render import render
 from context_store import ContextStore, labelled
 from refusal_voice import display_refusal, is_refusal
@@ -506,6 +506,18 @@ def generate(cfg,history):
             if screened:
                 mood=result.get('mood');break
             logging.info('Answer attempt %d rejected by output checks',attempt+1)
+        if screened and not fresh and cfg.get('verify_denials',True) and DENIES_EXISTENCE.search(screened[0]):
+            # The model called something non-existent that it may simply not know: check the web before saying so.
+            logging.info('Denial of existence without a search; verifying online')
+            vpolicy=answer_policy+SEARCH_NOTE+'\n【重写要求】上一版把对方提到的东西说成不存在或没听过。先联网查证再答；查到就按事实说，查不到只说没查到、不确定。\n'
+            vcfg=dict(cfg,model=cfg.get('search_model',cfg.get('model')))
+            vcfg.pop('_hard',None)
+            try:
+                vres=invoke(vcfg,vpolicy,{'history':safe_history},REPLY_SCHEMA,search=True)
+                vscreened=screen_answer(cfg,vres,latest=latest)
+                if vscreened:screened,mood=vscreened,vres.get('mood')
+            except RuntimeError as e:
+                logging.info('Verification search failed: %s',e)
         if not screened:
             logging.info('Security gate: deterministic_output_denied')
             return refusal
