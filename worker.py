@@ -37,6 +37,7 @@ from huchenfeng import note as huchenfeng_note, unsupported_claim as huchenfeng_
 from social_language import note as social_language_note
 from persona_hobbies import note as hobby_note
 from senders import SenderBook, clean_name
+from audit import Auditor
 from affection import AffectionBook
 from model_sandbox import DECISION_SCHEMA, DESCRIBE_SCHEMA, REPLY_SCHEMA, SUMMARY_SCHEMA
 from backend import invoke
@@ -548,6 +549,7 @@ class Chat:
         self.answer_followup_key=None
         self.followups={}
         self.progress=None       # status notes for a slow answer in flight
+        self.auditor=Auditor()   # finds directed messages that were read but never answered
         self.followup_path=state_dir/('followup-%s.json'%digest)
         try:
             wall=time.time();mono=time.monotonic();limit=cfg.get('followup_seconds',120)
@@ -957,6 +959,8 @@ class Worker:
         self.harvest_names()
         snap=self.bridge.request('/snapshot?chat='+urllib.parse.quote(chat.name))
         keys=[(r['text'],r['outgoing']) for r in snap['rows']]
+        if not chat.auditor.started:
+            chat.auditor.started=True;chat.auditor.mark(snap['rows'])      # what is on screen at start is not audited
         if chat.previous is None:
             saved=self.load_seen(chat)
             if not saved:
@@ -1007,6 +1011,7 @@ class Worker:
                         if chat.catching_up:missed.append(entry)
                     elif not joke and not chat.catching_up:
                         chat.banter_unseen+=1;chat.last_message=time.monotonic()
+            chat.auditor.mark(kept)              # every row that reached the classifier has been decided about
             if chat.catching_up:
                 limit=self.cfg.get('catchup_max',4)
                 for stale in missed[:-limit] if limit else missed:     # only the newest few are still worth answering
@@ -1015,6 +1020,7 @@ class Worker:
                 kept_n=len([m for m in missed if m in chat.buffered])
                 if fresh:logging.info('Caught up after downtime: chat=%s new_rows=%d to_answer=%d',chat.name,len(fresh),kept_n)
         chat.catching_up=False
+        self.audit_missed(chat,snap['rows'])
         return fixed_due
 
     def needs_read(self,chat,listing,now):
@@ -1115,6 +1121,24 @@ class Worker:
             pr['waits']+=1;pr['next_wait']+=30
             self.send_progress(chat,PROGRESS_WAITING[pr['calm']]%int(elapsed))
 
+    def audit_missed(self,chat,rows):
+        """Queue directed messages that were read but slipped past the normal path (see audit.py)."""
+        if not self.cfg.get('audit',True):return
+        mine=list(chat.echo)+[m['content'] for m in chat.ctx.messages if m['role']=='assistant'][-8:]
+        def directed(row):
+            return any(d and b!=MENTION_ONLY for b,d,_ in classify_rows([(row['text'],False)],chat.mention_names,chat.aliases,mine,senders=[None],with_sender=True))
+        for row in chat.auditor.find_missed(rows,time.monotonic(),directed):
+            names=self.resolve_senders(chat,[row])
+            for body,is_directed,sender in classify_rows([(row['text'],False)],chat.mention_names,chat.aliases,mine,senders=[names[0]],with_sender=True):
+                if not is_directed or body==MENTION_ONLY:continue
+                entry=chat.ctx.add('user',body,pending=True,sender=sender)
+                entry['speaker_key']=row.get('sig') or sender or uuid.uuid4().hex
+                entry['observed_at']=time.monotonic()
+                entry['followup_key']=followup_key(sender,row.get('sig'))
+                chat.buffered.append(entry);chat.last_change=time.monotonic()
+                logging.warning('Audit: a mention was read but never answered; answering it now: chat=%s',chat.name)
+            chat.auditor.recovered([row],time.monotonic())
+
     def calm_for(self,chat,sender):
         """In the calm groups only the listed speakers (MemberA, memberb.) keep the sharp-tongued persona."""
         if chat.name not in self.cfg.get('calm_chats',[]):return False
@@ -1194,7 +1218,7 @@ class Worker:
                         logging.warning('Chat polling failed: chat=%s error=%s',chat.name,e)
                 state=('paused' if (ROOT/'state'/'PAUSED').exists() else
                        'waiting' if errors else 'generating' if any(c.answer_job for c in self.chats) else 'listening')
-                self.status(state,poll_errors=errors,queued_messages=sum(len(c.buffered) for c in self.chats),model_calls=dict(backend.stats),model_pool=agy_model.metrics() if self.cfg.get('backend')=='agy' else {})
+                self.status(state,poll_errors=errors,queued_messages=sum(len(c.buffered) for c in self.chats),model_calls=dict(backend.stats),audit_recovered=sum(c.auditor.recovered_total for c in self.chats),model_pool=agy_model.metrics() if self.cfg.get('backend')=='agy' else {})
                 self.last_error=None
                 busy=any(c.answer_job or c.buffered or c.catching_up or c.image_pending or c.vision_jobs for c in self.chats)
                 if busy:self.last_active=time.monotonic()

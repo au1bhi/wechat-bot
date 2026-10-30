@@ -26,9 +26,11 @@
 
 - 漏读新消息：机器人刚发完公式图（最后一行是 Image）后，聊天窗口顶部被图片挤出，旧的“前缀对齐”和“唯一锚点”都对不上，新问题被当成“窗口重置”而静默吞掉。`new_rows()` 现在会在新窗口任意位置寻找最近见过的连续行块（块必须唯一，单行必须有信息量），再取其后的行；含糊的窗口仍不会凭空产生或隐藏消息。
 
+- 漏答审计：新增 `audit.py`。机器人记住“正常流程已经判断过的行”，之后每次读群都核对窗口：被 @ 或引用机器人、从未进入过分类器、且后面 12 行内没有机器人回复的消息，等 20 秒宽限后自动排队回答并写一条 `Audit:` 警告。每个群每小时最多补 6 条；启动时屏幕上已有的行不审计；`audit: false` 可关闭；`status.json` 的 `audit_recovered` 记录补回次数。这是对“窗口对不上而静默吞消息”这一类问题的兜底。
+
 ### 测试
 
-- 新增 `test_bus_filter.py`（总线过滤、缺代理失败关闭、误拦与探测拒答回归）、`test_healthcheck.py`、`test_send_failed.py`、`test_latex_breaks.py`、`test_new_rows_block.py`。Python 3.12：332 项运行，无失败（跳过 2）。
+- 新增 `test_bus_filter.py`（总线过滤、缺代理失败关闭、误拦与探测拒答回归）、`test_healthcheck.py`、`test_send_failed.py`、`test_latex_breaks.py`、`test_new_rows_block.py`、`test_audit.py`。Python 3.12：332 项运行，无失败（跳过 2）。
 
 ## 0.1.0-rc.1（2026-10-30）
 
