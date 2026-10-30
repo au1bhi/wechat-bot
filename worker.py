@@ -13,6 +13,7 @@ import logging
 import os
 import random
 import re
+import struct
 import sqlite3
 import unicodedata
 from collections import namedtuple
@@ -131,6 +132,18 @@ MENTION_ONLY='（仅艾特机器人）'
 QUOTE=re.compile(r"^(?P<reply>.*?)\n+Quote (?P<name>.+?)'s message: (?P<quoted>.*)$",re.S)
 IMAGE_QUOTE=re.compile(r'（引用(?P<name>.+?)的消息：(?:Image|Animated Stickers[^）]*)）')
 SYSTEM_ROW=re.compile(r'撤回了一条消息|加入了群聊|邀请.{0,40}加入|移出了群聊|拍了拍|修改群名|^\d{1,2}:\d{2}$')
+PARTIAL_PICTURE=re.compile(r'部分截图|局部|不完整|被截断|截断|只显示|仅显示|只露出|显示不全|未显示完整|裁剪')
+
+
+def crop_is_partial(png):
+    """A chat preview that is tiny in one direction is a clipped slice of the picture, not the picture."""
+    try:
+        if isinstance(png,str):png=base64.b64decode(png[:64]+'='*(-len(png[:64])%4))
+        w,h=struct.unpack('>II',png[16:24])
+    except Exception:return False
+    return min(w,h)<160 or max(w,h)/max(1,min(w,h))>5
+
+
 NOT_LOADED=re.compile(r'未成功加载|未加载|加载失败|没加载|占位')
 
 
@@ -585,6 +598,8 @@ class Chat:
         self.banter_future=None
         self.banter_followup_key=None
         self.vision_jobs=[]      # (future, caption, sender) for images being described
+        self.partial_sigs=set()  # images whose chat preview is only a slice
+        self.opened_sigs=set()   # images already re-read from the original
         self.recent_media={}    # sender signature -> observation time for a later standalone mention
         self.image_pending=0     # new images waiting to be captured
         self.image_due=0.0
@@ -776,6 +791,7 @@ class Worker:
             logging.info('No loaded incoming image crop yet; retry=%d',chat.image_retries)
         for row in crops:
             future=POOL.submit(describe_image,self.cfg,row['png'],row['text'])
+            if crop_is_partial(row['png']):chat.partial_sigs.add(row.get('sig'))
             chat.vision_jobs.append((future,row['text'],row.get('sig')))
 
     def vision_tick(self,chat):
@@ -792,9 +808,23 @@ class Worker:
                 if chat.image_retries<2:
                     chat.image_retries+=1;chat.image_pending+=1
                     chat.image_due=time.monotonic()+self.cfg.get('image_retry_delay',4)
+            label='表情包' if caption.startswith(('Animated','[Sticker]','[动画表情]')) else '图片'
+            if (text and label=='图片' and sig and sig not in chat.opened_sigs and self.cfg.get('open_images',True)
+                    and self.cfg.get('open_partial_images',True) and (PARTIAL_PICTURE.search(text) or sig in chat.partial_sigs)):
+                # The chat shows only a slice of the picture: open the original in WeChat's viewer, as for quoted pictures.
+                chat.opened_sigs.add(sig)
+                try:
+                    res=self.bridge.request('/open_image',{'chat':chat.name,'sigs':[sig],'pages':self.cfg.get('image_pages',4)})
+                    full=describe_pages(self.cfg,res['pages'])
+                    if full and not NOT_LOADED.search(full):
+                        logging.info('Preview was partial; read the original picture instead: chat=%s',chat.name)
+                        text=full;label='原图'
+                except Exception as e:
+                    if 'VIEWER_NOT_CLOSED' in str(e):
+                        (ROOT/'state'/'PAUSED').write_text('auto');raise
+                    logging.info('Opening the original failed (%s); keeping the preview',e)
             if text:
                 chat.image_retries=0
-                label='表情包' if caption.startswith(('Animated','[Sticker]','[动画表情]')) else '图片'
                 entry=chat.ctx.add('user','[图片] （%s）%s'%(label,text),sender=self.senders.get(sig))
                 entry['followup_key']=followup_key(self.senders.get(sig),sig)
                 chat.banter_unseen+=1;chat.last_message=time.monotonic()
