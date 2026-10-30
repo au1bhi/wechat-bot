@@ -5,9 +5,19 @@ path (a window reset the matcher could not follow, a scroll, a restart in the mi
 it: the row simply sits in the chat as "already read". This module remembers which rows the normal path decided
 about and, on every later read, reports directed rows that were never decided about and have no reply after them.
 """
+import re
 import hashlib
 import unicodedata
 from collections import Counter
+
+
+# Status lines the bot posts while a slow answer is being worked on; they are not answers (see worker.PROGRESS_*).
+PROGRESS_NOTE=re.compile(r'这题有点难，我认真算|收到，这个要多想|这题得推导一遍|这题得好好想想|有点难度，容本喵|等会，这题要多想|'
+                         r'思路有了，正在写|算完了，正在整理|想出来了，正在写|算完了，在整理|还在推，已经|还在算，已经')
+
+
+def is_answer(row):
+    return bool(row.get('outgoing')) and not PROGRESS_NOTE.search(row.get('text',''))
 
 
 def row_key(row):
@@ -42,7 +52,7 @@ class Auditor:
             key=row_key(row)
             if unhandled.get(key,0)<=0:continue
             unhandled[key]-=1
-            if any(r.get('outgoing') for r in rows[index+1:index+1+self.lookahead]):continue   # answered
+            if any(is_answer(r) for r in rows[index+1:index+1+self.lookahead]):continue   # answered
             if not is_directed(row):
                 self.handled[key]+=1;continue                       # not for the bot: nothing to recover
             self.first_seen.setdefault(key,now)

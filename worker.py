@@ -38,7 +38,7 @@ from huchenfeng import note as huchenfeng_note, unsupported_claim as huchenfeng_
 from social_language import note as social_language_note
 from persona_hobbies import note as hobby_note
 from senders import SenderBook, clean_name
-from audit import Auditor
+from audit import is_answer, Auditor
 from affection import AffectionBook
 from model_sandbox import DECISION_SCHEMA, DESCRIBE_SCHEMA, REPLY_SCHEMA, SUMMARY_SCHEMA
 from backend import invoke
@@ -1039,7 +1039,7 @@ class Worker:
                 if incoming_image(row) and row.get('sig'):chat.recent_media[row['sig']]=time.time()
                 owner=self.owner_identity(chat,row,sender)
                 # A message the bot already answered before it stopped has its own reply right after it.
-                answered=chat.catching_up and any(r['outgoing'] for r in kept[index+1:])
+                answered=chat.catching_up and any(is_answer(r) for r in kept[index+1:])
                 for body,directed,sender in classify_rows([(row['text'],row['outgoing'])],chat.mention_names,chat.aliases,mine,senders=[sender],with_sender=True):
                     supplemental=directed and body==MENTION_ONLY
                     if supplemental:
