@@ -1,0 +1,3 @@
+# 宿主机 worker（worker.py）的 Python 依赖。
+# 容器内桥接（transport.py）所需的 PyGObject/AT-SPI2 与 python-xlib 由 Dockerfile 以 Debian 软件包安装，不在此列。
+Pillow>=10.0

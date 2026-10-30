@@ -1,0 +1,25 @@
+# 用户态 systemd 服务模板：宿主机上的 worker。
+# 安装：
+#   mkdir -p ~/.config/systemd/user && cp deploy/wechat-bot.service ~/.config/systemd/user/
+#   按实际路径修改 WorkingDirectory 与 ExecStart（两处须指向仓库根目录），然后：
+#   systemctl --user daemon-reload && systemctl --user enable --now wechat-bot.service
+# 说明：
+#   - WorkingDirectory 必须是仓库根目录：config.json 中的相对路径（secrets/、bin/net-guard、runtime/）按当前目录解析。
+#   - agy 后端需要用户会话总线 /run/user/<uid>/bus；无图形登录的机器需执行 loginctl enable-linger <用户>。
+#   - 本模板未在全新机器上端到端验证。
+[Unit]
+Description=wechat-bot worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/wechat-bot
+ExecStart=/usr/bin/python3 %h/wechat-bot/worker.py
+Restart=on-failure
+RestartSec=5
+UMask=0077
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

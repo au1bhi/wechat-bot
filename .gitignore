@@ -1,0 +1,40 @@
+# Local configuration and credentials
+/config.json
+/config.local.json
+/config.json.*
+.env
+.env.*
+!.env.example
+**/auth.json
+**/credentials.json
+/secrets/
+/state/
+/runtime/
+/local/
+/bin/
+# Private captures, metrics and copies
+/benchmarks/
+*.log
+*.sqlite*
+*.db
+*.bak*
+*.backup*
+*.orig
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.mp4
+*.zip
+*.tar*
+*.7z
+# Python/build caches
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+build/
+dist/
+# 架构报告插图（其余图片仍被忽略，避免提交截图与二维码）
+!/docs/architecture/figures/*.png

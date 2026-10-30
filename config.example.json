@@ -1,0 +1,65 @@
+{
+  "chat": "Example Group A",
+  "bridge_url": "http://127.0.0.1:18765",
+  "bridge_token_file": "secrets/bridge_token",
+  "codex_bin": "/usr/bin/codex",
+  "codex_home": "/home/example-user/.codex",
+  "poll_seconds": 0.2,
+  "debounce_seconds": 0.4,
+  "model_timeout": 180,
+  "broker_lock": "runtime/broker.lock",
+  "broker_workdir": "runtime/codex-work",
+  "private_markers": [],
+  "network_guard_bin": "bin/net-guard",
+  "mention_names": [
+    "DemoBot",
+    "Legacy Bot",
+    "OldBot"
+  ],
+  "model": "gpt-6-luna",
+  "model_public_name": "Gemini 3.8 Flash",
+  "effort": "low",
+  "gate_model": "gpt-5.6-sol",
+  "aliases": [
+    "DemoBot",
+    "DemoBot",
+    "DemoBot",
+    "Legacy Bot",
+    "角色乙",
+    "OldBot",
+    "alias_a",
+    "角色甲",
+    "alias_b"
+  ],
+  "chats": [
+    "Example Group A",
+    "Example Study Group",
+    "Example Group B"
+  ],
+  "banter": false,
+  "banter_cooldown": 45,
+  "banter_gap": 8,
+  "banter_settle": 1.5,
+  "search_model": "gpt-5.6-sol",
+  "owner_candidate_names": [],
+  "owner_candidate_sigs": [],
+  "backend": "agy",
+  "agy_model": "gemini-3.8-flash-low",
+  "agy_gate_model": "gemini-3.8-flash-low",
+  "agy_pool": {
+    "gemini-3.8-flash-low": 4
+  },
+  "agy_fallback": false,
+  "agy_pool_min": 2,
+  "agy_pool_idle_seconds": 300,
+  "idle_poll_seconds": 1.0,
+  "idle_refresh_seconds": 12,
+  "calm_chats": [
+    "Example Study Group"
+  ],
+  "spicy_speakers": [
+    "MemberA",
+    "memberb."
+  ],
+  "catchup_seconds": 1800
+}

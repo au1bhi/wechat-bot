@@ -1,0 +1,39 @@
+services:
+  desktop:
+    image: wechat-bot-desktop:local
+    container_name: wechat-bot-desktop
+    init: true
+    restart: unless-stopped
+    user: '1000:1000'
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    pids_limit: 1024
+    mem_limit: 1536m
+    shm_size: 256m
+    tmpfs:
+      - /tmp:mode=1777
+    environment:
+      BOT_CHAT: Example Group A
+    ports:
+      - '127.0.0.1:6080:6080'
+      - '127.0.0.1:18765:18765'
+    volumes:
+      - /opt/wechat:/opt/wechat:ro
+      - ./state/desktop-home:/home/wechat
+      - ./state/machine-id:/etc/machine-id:ro
+      - ./transport.py:/app/transport.py:ro
+      - ./entrypoint.sh:/app/entrypoint.sh:ro
+    secrets:
+      - bridge_token
+      - vnc_password
+    healthcheck:
+      test: ['CMD', '/usr/bin/python3', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:6080/vnc.html", timeout=5)']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+secrets:
+  bridge_token:
+    file: ./secrets/bridge_token
+  vnc_password:
+    file: ./secrets/vnc_password

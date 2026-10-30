@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+set -euo pipefail
+BOT_ROOT=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+case "${1:-status}" in
+  status) systemctl --user is-active wechat-bot.service || true; python3 "$BOT_ROOT/worker.py" --status ;;
+  pause) touch "$BOT_ROOT/state/PAUSED"; echo 'Automatic replies paused.' ;;
+  resume) rm -f "$BOT_ROOT/state/PAUSED"; systemctl --user start wechat-bot.service ;;
+  start) docker compose -f "$BOT_ROOT/compose.yaml" up -d; systemctl --user start wechat-bot.service ;;
+  stop) systemctl --user stop wechat-bot.service; docker compose -f "$BOT_ROOT/compose.yaml" stop ;;
+  logs) journalctl --user -u wechat-bot.service -n 60 --no-pager ;;
+  desktop) echo 'http://127.0.0.1:6080/vnc.html?autoconnect=true&resize=scale'; echo "VNC password: $(cat "$BOT_ROOT/secrets/vnc_password")" ;;
+  *) echo 'Usage: botctl {status|pause|resume|start|stop|logs|desktop}' >&2; exit 2 ;;
+esac
