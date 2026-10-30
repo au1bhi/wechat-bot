@@ -8,7 +8,7 @@ so the ~10 s start-up cost is paid ahead of time and a turn takes ~3 s.
 Why a sandbox: `agy` is a coding agent with ~60 tools. In headless mode it can still read and write files
 inside its working directory without asking, so the process sees only a private, per-process work directory
 (empty, or holding just the images for this one turn), no host files, no home directory, only port 443
-outbound (Landlock), and the one D-Bus socket that holds its login. Commands, files outside the workspace and
+outbound (Landlock), and a filtered D-Bus socket that reaches only the keyring holding its login. Commands, files outside the workspace and
 URL fetches are denied by the CLI when nobody can approve them.
 
 Memory: keep `agy_pool_min` processes ready. The configured ceiling counts all living sessions, including
@@ -22,6 +22,7 @@ import os
 import queue
 import re
 import shutil
+import socket
 import subprocess
 import tempfile
 import threading
@@ -57,10 +58,84 @@ def work_root(cfg):
     return root
 
 
+class BusProxy:
+    """A filtered D-Bus socket for the sandbox.
+
+    The login keyring lives on the user's session bus, which also carries every other desktop service.
+    `xdg-dbus-proxy --filter` in front of it lets the sandbox see exactly one name, the secret service,
+    so a compromised or prompt-injected `agy` cannot call notifications, portals, the shell or anything else.
+    """
+    ALLOWED=('org.freedesktop.secrets',)
+
+    def __init__(self,cfg):
+        self.cfg=cfg
+        self.lock=threading.Lock()
+        self.proc=None
+        self.keep=None                      # our end of the sync socket: closing it (or exiting) stops the proxy
+        self.path=work_root(cfg)/('bus-%d.sock'%os.getpid())
+
+    def ensure(self):
+        with self.lock:
+            if self.proc is not None and self.proc.poll() is None and self.path.exists():return str(self.path)
+            self._stop()
+            real='/run/user/%d/bus'%os.getuid()
+            if not os.path.exists(real):raise RuntimeError('AGY_LOGIN_BUS_MISSING')
+            binary=shutil.which('xdg-dbus-proxy')
+            if not binary:raise RuntimeError('AGY_BUS_PROXY_MISSING')
+            try:self.path.unlink()
+            except FileNotFoundError:pass
+            ours,theirs=socket.socketpair()
+            try:
+                command=[binary,'--fd=%d'%theirs.fileno(),'unix:path='+real,str(self.path),'--filter']+['--talk='+n for n in self.ALLOWED]
+                self.proc=subprocess.Popen(command,stdin=subprocess.DEVNULL,stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,
+                                           pass_fds=(theirs.fileno(),),start_new_session=True,env={'PATH':'/usr/bin:/bin'})
+            finally:
+                theirs.close()
+            ours.settimeout(5)
+            try:ready=ours.recv(1)
+            except OSError:ready=b''
+            if not ready or not self.path.exists():
+                ours.close();self._stop();raise RuntimeError('AGY_BUS_PROXY_FAILED')
+            ours.settimeout(None)
+            self.keep=ours
+            os.chmod(self.path,0o600)
+            return str(self.path)
+
+    def _stop(self):
+        if self.keep is not None:
+            try:self.keep.close()
+            except OSError:pass
+            self.keep=None
+        if self.proc is not None:
+            try:os.killpg(self.proc.pid,15)
+            except (OSError,ProcessLookupError):pass
+            try:self.proc.wait(timeout=2)
+            except Exception:pass
+            self.proc=None
+        try:self.path.unlink()
+        except (FileNotFoundError,OSError):pass
+
+    def stop(self):
+        with self.lock:self._stop()
+
+
+_bus=None
+_bus_lock=threading.Lock()
+
+
+def bus_socket(cfg):
+    """Host path of the filtered bus socket (started on first use, restarted if it died)."""
+    global _bus
+    with _bus_lock:
+        if _bus is None:
+            _bus=BusProxy(cfg);atexit.register(_bus.stop)
+    return _bus.ensure()
+
+
 def sandbox_command(cfg,model,passwd_fd,workdir):
     uid=os.getuid()
-    bus='/run/user/%d/bus'%uid
-    if not os.path.exists(bus):raise RuntimeError('AGY_LOGIN_BUS_MISSING')
+    bus='/run/user/%d/bus'%uid                       # where the sandboxed process looks for it
+    bus_source=cfg.get('agy_bus_socket') or bus_socket(cfg)
     agy=str(Path(cfg.get('agy_bin','~/.local/bin/agy')).expanduser())
     command=['/usr/bin/bwrap','--die-with-parent','--new-session','--unshare-user','--unshare-pid','--unshare-uts',
              '--unshare-ipc','--hostname','sandbox','--cap-drop','ALL',
@@ -71,7 +146,7 @@ def sandbox_command(cfg,model,passwd_fd,workdir):
              '--ro-bind','/etc/resolv.conf','/etc/resolv.conf','--ro-bind','/etc/nsswitch.conf','/etc/nsswitch.conf',
              '--ro-bind-data',str(passwd_fd),'/etc/passwd',
              '--bind',workdir,'/work',          # this process's own scratch directory, nothing else from the host
-             '--bind',bus,bus,
+             '--bind',bus_source,bus,         # filtered proxy socket, never the real session bus
              '--clearenv','--setenv','HOME','/home/agy','--setenv','PATH','/usr/bin:/bin','--setenv','LANG','C.UTF-8',
              '--setenv','TZ','UTC','--setenv','GOMAXPROCS',str(cfg.get('agy_gomaxprocs',2)),
              '--setenv','XDG_RUNTIME_DIR','/run/user/%d'%uid,

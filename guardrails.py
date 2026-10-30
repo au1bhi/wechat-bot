@@ -30,12 +30,19 @@ LOCAL_EXPLICIT=re.compile(
     r'(?:服务器|电脑|设备|主机|机器(?!人)|你这边|你那边|你的).{0,6}(?:时区|系统时间|系统时钟|运行时间|开机时间|在线时长)|timedatectl|\buptime\b|环境变量|用户名|主机名|公网\s*ip|内网\s*ip|ip\s*地址|硬件信息|系统版本|系统信息|系统提示|开发者提示|隐藏提示|'
     r'(?:你的|你用|你使用|你在用|底层|当前使用|运行的|部署的).{0,12}(?:版本|订阅|账号|软件|服务|接口)|'
     r'(?:你的|本机|机器|设备|服务器).{0,15}(?:cpu|gpu|ram|内存|磁盘|硬盘|ip|mac|序列号|密码|密钥)|'
-    r'(?:读|列出|查看|打开|搜索|扫描|下载|上传|拷贝|复制|删除|修改|执行|运行).{0,12}(?:设备|文件|目录|日志|终端|命令|脚本)|'
+    r'(?:读|列出|查看|打开|搜索|扫描|下载|上传|拷贝|复制|删除|修改|执行|运行).{0,8}(?:你的|你这|你那|本机|宿主|这台|此机|该机|当前机器|服务器上|电脑上|设备上).{0,8}(?:设备|文件|目录|日志|终端|命令|脚本)|'
+    r'(?:读|列出|查看|打开|搜索|扫描|下载|上传|拷贝|复制|删除|修改|执行|运行).{0,4}(?:设备|终端)|^(?:请|帮我|给我|麻烦)?(?:执行|运行).{0,12}(?:命令|脚本)|'
     r'\b(?:your|this|the\s+host|underlying|current|local|running|deployment)\b.{0,45}'
     r'\b(?:computer|device|machine|server|host|system|environment|files?|directories|folders?|config|logs?|processes|ports?|hardware|cpu|gpu|ram|memory|disk|hostname|username|ip|credentials?)\b|'
-    r'codex|antigravity|jetski|(?<![a-z])agy(?![a-z])|bubblewrap|bwrap|landlock|systemd|docker|容器|沙箱|沙盒|\b(?:hostname|whoami|uname|printenv|os\.environ|process\.env|subprocess|docker\s+exec)\b|'
+    r'\b(?:hostname|whoami|uname|printenv|docker\s+exec)\b|'
     r'(?:/home/|/root/|/etc/|/proc/|/sys/|/var/|/run/|/Users/|~/|[a-z]:\\)|'
     r'\b(?:ssh\s+(?:key|private)|api[ _-]?key|refresh[ _-]?token|access[ _-]?token|auth\.json|\.env|\.ssh)\b',re.I|re.S)
+# The names of the bot's own stack are ordinary technical vocabulary ("docker compose volumes", "my container
+# will not start"). They are refused here only when the sentence is about the bot or its host; the semantic
+# classifier still sees everything else.
+STACK_TERMS=r'codex|antigravity|jetski|(?<![a-z])agy(?![a-z])|bubblewrap|bwrap|landlock|systemd|docker|容器|沙箱|沙盒'
+ABOUT_BOT=r'(?:你|您|你们|本机|宿主|这台|此机|该机|当前|运行你|部署你|机器人)'
+STACK_ABOUT_BOT=re.compile(ABOUT_BOT+r'.{0,20}(?:'+STACK_TERMS+r')|(?:'+STACK_TERMS+r').{0,10}(?:你|您)',re.I|re.S)
 INJECTION=re.compile(
     r'忽略.{0,20}(?:指令|规则|提示|限制)|绕过.{0,20}(?:安全|防护|限制|规则)|'
     r'(?:假装|扮演|模拟).{0,20}(?:管理员|开发者|终端|系统|root|无限制)|'
@@ -58,7 +65,7 @@ def input_reason(text):
     if len(text)>MAX_INPUT:return 'input_too_large'
     n=normalize(text)
     if political_reason(n):return 'political_content'
-    if LOCAL_EXPLICIT.search(n):return 'local_information'
+    if LOCAL_EXPLICIT.search(n) or STACK_ABOUT_BOT.search(n):return 'local_information'
     if INJECTION.search(n):return 'instruction_override'
     if SECRET_OR_ADDRESS.search(n):return 'sensitive_literal'
     return None

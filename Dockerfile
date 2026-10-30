@@ -12,6 +12,7 @@ RUN sed -i "s|http://deb.debian.org/debian-security|https://mirrors.aliyun.com/d
 RUN useradd --uid 1000 --create-home wechat && mkdir /app && chown wechat:wechat /app
 COPY entrypoint.sh /app/entrypoint.sh
 COPY transport.py /app/transport.py
+COPY healthcheck.py /app/healthcheck.py
 USER wechat
 WORKDIR /app
 ENTRYPOINT ["dbus-run-session","--","bash","/app/entrypoint.sh"]

@@ -375,7 +375,7 @@ class Routing(unittest.TestCase):
 
 class SandboxShape(unittest.TestCase):
     def setUp(self):
-        self.cmd=agy_model.sandbox_command({'network_guard_bin':'/x/net-guard','agy_bin':'/x/agy'},'gemini-3.8-flash-low',9,'/run/work-1')
+        self.cmd=agy_model.sandbox_command({'network_guard_bin':'/x/net-guard','agy_bin':'/x/agy','agy_bus_socket':'/run/proxy/bus-filtered.sock'},'gemini-3.8-flash-low',9,'/run/work-1')
 
     def test_no_host_directory_is_visible(self):
         joined=' '.join(self.cmd)
@@ -383,7 +383,8 @@ class SandboxShape(unittest.TestCase):
         self.assertNotIn(' --bind / ',joined)
         binds=[(self.cmd[i+1],self.cmd[i+2]) for i,x in enumerate(self.cmd) if x=='--bind']
         bus='/run/user/%d/bus'%os.getuid()
-        self.assertEqual(binds,[('/run/work-1','/work'),(bus,bus)])         # own scratch dir + the login keyring bus only
+        # own scratch dir + the filtered keyring socket (placed at the usual bus path), never the real session bus
+        self.assertEqual(binds,[('/run/work-1','/work'),('/run/proxy/bus-filtered.sock',bus)])
         for flag in ('--unshare-user','--unshare-pid','--unshare-ipc','--clearenv','--die-with-parent'):self.assertIn(flag,self.cmd)
         self.assertIn('--tmpfs',self.cmd)                                    # empty home and /tmp
 

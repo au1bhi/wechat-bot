@@ -18,7 +18,7 @@
 
 ## 环境与检查
 
-Linux（Landlock ABI ≥ 6）、Python 3.12，主进程需要 Pillow（`pip install -r requirements.txt`）；桥接需要 PyGObject/AT-SPI2、python-xlib；部署还需要 Docker/Compose、Xvfb/Openbox、D-Bus、Bubblewrap。公式渲染需要 XeLaTeX、dvipng/Poppler 工具和字体，按 `latex_render.py` 的实际命令检查依赖。镜像所需系统包列在 Dockerfile。此候选未完成全新机器安装验证。
+Linux（Landlock ABI ≥ 6）、Python 3.12，主进程需要 Pillow（`pip install -r requirements.txt`）；桥接需要 PyGObject/AT-SPI2、python-xlib；部署还需要 Docker/Compose、Xvfb/Openbox、D-Bus、Bubblewrap、xdg-dbus-proxy（过滤沙箱可见的 D-Bus 服务）。公式渲染需要 XeLaTeX、dvipng/Poppler 工具和字体，按 `latex_render.py` 的实际命令检查依赖。镜像所需系统包列在 Dockerfile。此候选未完成全新机器安装验证。
 
 复制 `config.example.json` 为本地 `config.json`，填入自己的群名、路径与凭据文件位置；实际配置被 Git 忽略。不要上传 auth.json、密钥、二维码或容器 home。
 

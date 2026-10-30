@@ -1,5 +1,20 @@
 # 变更记录
 
+## 0.1.0-rc.2（2026-10-30）
+
+### 安全
+
+- agy 沙箱不再绑定真实的 D-Bus 会话总线。`agy_model.BusProxy` 用 `xdg-dbus-proxy --filter --talk=org.freedesktop.secrets` 提供过滤后的套接字，沙箱内只能访问密钥服务；缺少 `xdg-dbus-proxy` 时失败关闭。部署需安装 `xdg-dbus-proxy`。
+
+### 修复
+
+- 技术话题误拒答：`docker`、`容器`、`systemd`、`沙箱`、`subprocess`、`读取文件` 等词不再无条件命中 `local_information`。仅当句子指向机器人或其宿主（如“你运行在 docker 里吗”）或明确要求读取/执行本机内容时才由规则拒答。
+- 健康检查：容器健康现在要求 noVNC 可达，且桥接 `/status` 报告微信已登录且未锁定（`healthcheck.py`）；微信掉线或桥接异常时容器显示 unhealthy。compose 需挂载 `healthcheck.py`。
+
+### 测试
+
+- 新增 `test_bus_filter.py`（总线过滤、缺代理失败关闭、误拦与探测拒答回归）与 `test_healthcheck.py`。Python 3.12：332 项运行，无失败（跳过 2）。
+
 ## 0.1.0-rc.1（2026-10-30）
 
 首个提交。内容为脱敏后的源码加下列整理。

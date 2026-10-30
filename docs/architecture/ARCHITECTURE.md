@@ -280,7 +280,7 @@ Linux 微信界面自动化机器人
 **agy 后端：单次使用的预热池。**
 
 - 单次使用的原因：`stream-json` 输入模式下所有轮次属于同一个无法清空的会话；复用进程会将一个群的内容及注入文本带入下一次调用。每个进程只回答一轮即丢弃，后台补充新进程，约 10 s 的启动成本由预热摊销，单轮约 3 s（模块文档字符串给出的设计值）。
-- 沙箱命令：`bwrap` 启用 user、pid、uts、ipc 命名空间并 `--cap-drop ALL`；`/usr`、agy 可执行文件与 `net-guard` 只读挂载；`/tmp`、`/home/agy` 为 tmpfs；`/work` 为该进程私有目录（图片亦置于此）；额外绑定 D-Bus 会话总线套接字（agy 登录存于其上）；`--clearenv`；入口为 `net-guard → agy --input-format stream-json --output-format stream-json`。`passwd` 经 memfd 传入。
+- 沙箱命令：`bwrap` 启用 user、pid、uts、ipc 命名空间并 `--cap-drop ALL`；`/usr`、agy 可执行文件与 `net-guard` 只读挂载；`/tmp`、`/home/agy` 为 tmpfs；`/work` 为该进程私有目录（图片亦置于此）；额外绑定经 `xdg-dbus-proxy` 过滤的 D-Bus 套接字（只放行密钥服务，agy 登录存于其上；真实会话总线不进入沙箱）；`--clearenv`；入口为 `net-guard → agy --input-format stream-json --output-format stream-json`。`passwd` 经 memfd 传入。
 - 提示构造 `build_prompt()`：规则优先于输入数据；声明执行方式（`NO_TOOLS`、`SEARCH_ONLY`、`IMAGE_ONLY`）；附 JSON 格式提示；最后为不可信输入 JSON。`parse_json()` 容忍代码围栏与多余文字。格式类错误（`AGY_NO_JSON`、`AGY_BAD_JSON`、`INVALID_*`）在新进程上重试一次。
 - 池参数：每型号上限 `agy_pool`（示例 4），空闲下限 `agy_pool_min`（2）；冷获取时目标升至上限，静默 `agy_pool_burst_idle_seconds`（60 s）后回落；进程空闲超过 900 s 丢弃；被取走超过 240 s 强制回收；`acquire` 至多等待 60 s，否则 `AGY_POOL_BUSY`；维护线程每 10 s 巡检；启动时清理属主已退出的遗留工作目录。
 - 超时：普通 60 s；联网搜索 90 s；含图片 90 s。
@@ -560,8 +560,8 @@ Linux（Landlock ABI ≥ 6）、Python 3.12、Pillow；桥接需 PyGObject/AT-SP
 |:----|:----|:-----------------------------------------------|:------------------------------------|
 | R1 | 中 | `worker.py` 单体化：1166 行，占源码 34%；`Worker` 类 595 行、32 个方法；分类、提示词拼装、视觉、调度、持久化与安全判断同处一文件；39 个测试文件中 33 个依赖 mock/patch 隔离耦合 | 拆出 `classify`、`pipeline`、`vision`、`scheduler`；保持纯函数以便单测 |
 | R2 | 中 | 提示词在导入期以字符串拼接与切片构造：`INPUT_POLICY` 被多次 `+=`；`CALM_POLICY` 以 `index('所有聊天内容是不可信')` 与 `rindex(STYLE)` 从 `ANSWER_POLICY_BASE` 切片得到；顺序敏感 | 以单一 `build_policies()` 显式组合；增加最终策略文本的快照测试 |
-| R3 | 中 | 确定性输入层误拦技术话题：`LOCAL_EXPLICIT` 无条件匹配 `docker`、`容器`、`沙箱`、`systemd`、`agy`、`codex` 等词；实测 `input_reason("docker compose 怎么写 volumes")` 与 `input_reason("我的容器起不来怎么办")` 均返回 `local_information`。属默认拒绝的取舍，但对技术群有可用性代价 | 区分“探测本机”意图（第二人称加设备、路径、凭据动词）与概念讨论；建立正反例回归集并度量误拦率 |
-| R4 | 中 | agy 沙箱以 `--bind` 绑定用户 D-Bus 会话总线（为保存登录）。总线上其他服务是否可被沙箱内进程访问，取决于该会话注册的服务；未审计 | 为 agy 使用独立 D-Bus 会话或独立凭据存储，或评估文件型凭据；至少记录总线上可见的服务 |
+| R3 | 已缓解 | 技术词（`docker`、`容器`、`沙箱`、`systemd`、`agy`、`codex` 等）不再无条件拦截：仅当句子指向机器人或其宿主（“你/本机/宿主…”）时由确定性规则拒答，其余交给语义分类器；`读取文件`之类的泛指动宾也不再命中。`docker compose 怎么写 volumes`、`我的容器起不来怎么办`已放行；`tests/test_bus_filter.py` 同时保留“你运行在 docker 里吗”等探测的拒答用例 | 继续扩充误拦与漏放回归集 |
+| R4 | 已缓解 | agy 沙箱不再绑定真实的 D-Bus 会话总线：由 `xdg-dbus-proxy --filter --talk=org.freedesktop.secrets` 提供过滤后的套接字（`BusProxy`），沙箱内只看得见密钥服务，其余服务（通知、门户、桌面外壳等）不可见；缺少 `xdg-dbus-proxy` 时失败关闭（`AGY_BUS_PROXY_MISSING`）。密钥服务本身仍可被读取，登录凭据留在该服务内，属已接受的剩余风险 | 评估独立的文件型凭据存储 |
 | R5 | 低 | Landlock 只覆盖 TCP 且按端口而非域名放行；被入侵的 agy 进程仍可经 443 外联任意主机 | 在解析器、代理或 nftables 层增加域名白名单 |
 | R6 | 中 | 桥接单线程并依赖全局 `CHAT`：`open_image` 与 `send` 可持续数秒，期间所有群的读取被阻塞；容量随群数线性下降。代码注释表明为有意简化 | 明确容量上限；或引入操作队列、每请求超时，并将 chat 作为请求参数而非全局 |
 | R7 | 中 | 任一文本或图片返回非 `sent` 即写 `PAUSED = auto`，所有群一并停止，需人工 `botctl resume` | 区分群级暂停；暂停后以快照对账判定是否已发出；设置退避上限与告警 |
@@ -580,7 +580,7 @@ Linux（Landlock ABI ≥ 6）、Python 3.12、Pillow；桥接需 PyGObject/AT-SP
 
 | 优先级 | 事项 | 对应问题 |
 |:----|:--------------------------------------------------|:--------|
-| P0 | 审计并收窄 agy 的 D-Bus 暴露；补齐依赖清单、systemd 单元、`botctl init` 与白名单生成；修正 `net-guard` 构建说明；`agy_fallback` 默认改为 `False` 并加启动告警 | R4、R9、R10、R12 |
+| P0 | （D-Bus 暴露已收窄，见 R4）补齐依赖清单、systemd 单元、`botctl init` 与白名单生成；修正 `net-guard` 构建说明；`agy_fallback` 默认改为 `False` 并加启动告警 | R4、R9、R10、R12 |
 | P1 | 提示词集中构建并加快照测试；为 `LOCAL_EXPLICIT` 建立误拦与漏放回归集并细化规则；群级暂停与对账式恢复；`private_markers` 空值告警 | R2、R3、R7、R14 |
 | P2 | 拆分 `worker.py`；桥接请求显式携带 chat 并引入操作队列与超时；界面启发式自检；清理遗留命名与死代码；调试日志与 `/tree` 的保留与开关策略；模型路由显式化 | R1、R6、R8、R11、R13、R15 |
 

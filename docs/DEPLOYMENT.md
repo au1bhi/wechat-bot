@@ -7,7 +7,7 @@
 | 项 | 要求 |
 |---|---|
 | 系统 | Linux；Landlock ABI ≥ 6（内核 6.12 及以上）。可用 `./bin/net-guard /bin/true` 检查：退出码 0 为可用，121 为内核不支持 |
-| 宿主机软件 | Python 3.12、Docker 与 Compose、Bubblewrap、C 编译器；公式渲染另需 XeLaTeX、Poppler（`pdftoppm`）与字体 |
+| 宿主机软件 | Python 3.12、Docker 与 Compose、Bubblewrap、`xdg-dbus-proxy`（把 agy 沙箱可见的 D-Bus 限制为密钥服务；缺失时 agy 启动失败而不会放宽）、C 编译器；公式渲染另需 XeLaTeX、Poppler（`pdftoppm`）与字体 |
 | 微信客户端 | Linux 版安装在宿主机 `/opt/wechat`（compose 以只读方式挂入容器；本仓库不提供） |
 | agy CLI | 自行从官方渠道安装并登录，默认路径 `~/.local/bin/agy`（配置项 `agy_bin`） |
 

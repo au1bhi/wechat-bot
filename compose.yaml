@@ -23,11 +23,12 @@ services:
       - ./state/machine-id:/etc/machine-id:ro
       - ./transport.py:/app/transport.py:ro
       - ./entrypoint.sh:/app/entrypoint.sh:ro
+      - ./healthcheck.py:/app/healthcheck.py:ro
     secrets:
       - bridge_token
       - vnc_password
     healthcheck:
-      test: ['CMD', '/usr/bin/python3', '-c', 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:6080/vnc.html", timeout=5)']
+      test: ['CMD', '/usr/bin/python3', '/app/healthcheck.py']
       interval: 30s
       timeout: 10s
       retries: 3
