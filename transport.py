@@ -255,9 +255,41 @@ def message_direction(crop, media=False, avatar_visible=True):
     return 'outgoing' if green>max(25,len(samples)*.025) else 'incoming'
 
 
-def snapshot(images=False, strips=False):
-    open_chat()
+def follow_latest():
+    """Bring the open chat to its newest message and return a fresh tree.
+
+    A chat left scrolled up (by a person, or by a scan that did not put it back) shows old rows only, so new
+    messages would never be read. WeChat then shows a green "Go to the latest message" pill at the bottom
+    right of the message list; scroll down until it has been gone for three looks in a row (it blinks out
+    while the list is still moving). Nothing is touched when the pill is absent.
+    """
     ns = list(walk(app()))
+    lists = [n for n in ns if n.get_role_name() == 'list' and n.get_name() in ('Messages', '消息')]
+    if len(lists) != 1:
+        return ns
+    x, y, w, h = bounds(lists[0])
+    bx, by = x+w-110, y+h-25
+    missing = 0
+    scrolled = False
+    for _ in range(40):
+        pill = screenshot().crop((bx-95, by-14, bx+95, by+14)).convert('RGB')
+        green = sum(1 for r, g, b in list(pill.getdata())[::2] if g > 150 and r < 90 and b < 150 and g-r > 80)
+        if green >= 25:
+            missing = 0
+            scrolled = True
+            wheel(x+w//2, y+h//2, 5, 40)
+            time.sleep(.25)
+        else:
+            missing += 1
+            if missing >= 3:
+                break
+            time.sleep(.25)
+    return list(walk(app())) if scrolled else ns
+
+
+def snapshot(images=False, strips=False, follow=True):
+    open_chat()
+    ns = follow_latest() if follow else list(walk(app()))
     lists = [n for n in ns if n.get_role_name() == 'list' and n.get_name() in ('Messages', '消息')]
     if len(lists) != 1:
         raise RuntimeError('MESSAGE_LIST_NOT_UNIQUE')
@@ -766,7 +798,7 @@ class Handler(BaseHTTPRequestHandler):
             if url.path == '/overview':return self.respond(overview())
             if url.path == '/snapshot':
                 query = urllib.parse.parse_qs(url.query)
-                return self.respond(snapshot(query.get('images') == ['1'], query.get('strips') == ['1']))
+                return self.respond(snapshot(query.get('images') == ['1'], query.get('strips') == ['1'], query.get('keep') != ['1']))
             if url.path == '/tree':
                 return self.respond([{'role':n.get_role_name(),'name':n.get_name(),'bounds':bounds(n)} for n in walk(app()) if n.get_name()])
             return self.respond({'error':'NOT_FOUND'},404)
