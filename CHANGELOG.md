@@ -22,9 +22,11 @@
 - 难题走高强度模型：数学、证明、算法与调试类问题（`worker.is_hard()` 由代码判断，不额外调用模型）改用 `agy_hard_model`（示例 `gemini-3.8-flash-high`），超时 `agy_hard_timeout`（默认 150 s）。该型号不预热（`agy_pool_floors` 设为 0），首次使用时才启动进程；分类器和审查仍用快速型号。
 - 慢答案的进度说明：难题派发后先发一句“在算了”，30 s 和 60 s 仍未出结果再按已用时间补发，模型开始写答案后若又拖了 8 s 以上再发一句。内容只依据真实可知的信息（已用时间、模型是否已开始输出）；agy 不提供思考过程文本，因此不会编造“推到第几步”。说明消息不进入对话上下文。
 
+- 公式图排版：模型一行一条写的步骤或编号列表此前被 LaTeX 当成空格并成一整段（“1. … 2. … 3. …”挤在一起）。`latex_render.preserve_breaks()` 现在在正文、环境和独立公式之外给这类行补 `\\`；空行（分段）、已有的 `\\`、`align`/`enumerate` 等环境内部和 `\[ \]`、`$$ $$` 内部保持原样。
+
 ### 测试
 
-- 新增 `test_bus_filter.py`（总线过滤、缺代理失败关闭、误拦与探测拒答回归）、`test_healthcheck.py` 与 `test_send_failed.py`。Python 3.12：332 项运行，无失败（跳过 2）。
+- 新增 `test_bus_filter.py`（总线过滤、缺代理失败关闭、误拦与探测拒答回归）、`test_healthcheck.py`、`test_send_failed.py`、`test_latex_breaks.py`。Python 3.12：332 项运行，无失败（跳过 2）。
 
 ## 0.1.0-rc.1（2026-10-30）
 
